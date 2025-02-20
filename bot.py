@@ -65,9 +65,7 @@ async def findLender(interaction: discord.Interaction):
     print("AI is searching for lenders")
 # This will use AI to find people who are willing to lend money
 
-
- #Run the bot
-
+# Run the bot
 bot.run(os.getenv("BOT_TOKEN"))   
 
 ## We can use Twillio like AI can use Twillio to notify you through watsapp if the server sees any possible lender or something.
