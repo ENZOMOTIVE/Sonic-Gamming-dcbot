@@ -30,3 +30,5 @@ async def findLender(interacction: discord.Interaction, discord.Interaction)
 
  #Run the bot
  bot.run("Your_BOT_token")   
+
+## We can use Twillio like AI can use Twillio to notify you through watsapp if the server sees any possible lender or something.
