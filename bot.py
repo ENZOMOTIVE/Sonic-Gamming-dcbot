@@ -38,6 +38,21 @@ twilio_client = Client(TWILIO_SID, TWILIO_AUTH_TOKEN)
 #OTP Temporary storage for Verification
 otp_storage = {} # Temporary stores OTPs for comparision
 
+#TWILIO Connection check 
+if TWILIO_AUTH_TOKEN :
+   print("✅ Twillio_AUTH_TOKEN connection loaded successfully.")
+else: 
+   print("❌ Failed to load TWILIO_AUTH_TOEN Check your .env file.")
+
+if TWILIO_SID :
+   print("✅ Twillio SID connection loaded successfully.")
+else: 
+   print("❌ Failed to load TWILIO_SID Check your .env file.")   
+
+if TWILIO_PHONE :
+    print("✅ TWILIO_PHONE connection loaded successfully.")
+else: 
+   print("❌ Failed to load TWILIO_PHONE Check your .env file.")
 
 # MongoDB Connection check
 if MONGO_URI:
