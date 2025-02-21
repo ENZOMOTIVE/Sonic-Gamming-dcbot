@@ -1,6 +1,9 @@
 import discord
 from discord.ext import commands
 from pymongo import MongoClient
+from twilio.rest import Client
+
+import random
 
 import os
 from dotenv import load_dotenv
@@ -24,6 +27,17 @@ client = MongoClient(MONGO_URI)
 db = client["discord_bot"] # database name
 users = db["kyc_users"] # Collection
 
+# TWILIO Credentials Setup
+TWILIO_SID = os.getenv("TWILIO_SID")
+TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
+TWILIO_PHONE = os.getenv("TWILIO_PHONE")
+
+# Initialize Twilio Client
+twilio_client = Client(TWILIO_SID, TWILIO_AUTH_TOKEN)
+
+#OTP Temporary storage for Verification
+otp_storage = {} # Temporary stores OTPs for comparision
+
 
 # MongoDB Connection check
 if MONGO_URI:
@@ -39,6 +53,52 @@ async def on_ready():
     await bot.tree.sync()  # Sync slash commands with Discord
     print(f"✅ Logged in as {bot.user.name} and bot is now online!")   
 
+# Verify the user through SMS Verification Twilio
+@bot.tree.command(name="verify", description="Verify your account via phone number")
+async def verify(interaction: discord.Interaction):
+    await interaction.response.send_message("Check your DMs for Verification", ephemeral=True)
+
+    try:
+        #Send DM to user
+        dm_channel = await interaction.user.create_dm()
+        await dm_channel.send("Please provide your phone number for verification")
+
+        def check_phone(msg):
+            return msg.author == interaction.user and isinstance(msg.channel, discord.DMChannel)
+
+        phone_msg = await bot.wait_for("message", check=check_phone, timeout=60)
+        phone_number = phone_msg.content.strip()
+
+        #Generate OTP and store it temporarily
+        otp = str(random.randint(100000,999999))
+        otp_storage[interaction.user.id] = otp #Store OTP with user ID
+
+        #Send OTP via Twilio
+        twilio_client.messages.create(
+            body=f"Your OTP for verification is: {otp}",
+            from_=TWILIO_PHONE,
+            to=phone_number
+        )
+
+        await dm_channel.send("OTP sent! Please reply with the OTP your received")
+
+        def check_otp(msg):
+            return(
+                msg.author == interaction.user
+                and isinstance(msg.channel, discord.DMChannel)
+                and msg.content == otp_storage.get(interaction.user.id) #Compare OTP
+            )
+
+        await bot.wait_for("message", check=check_otp, timeout=120)
+
+        # Remove OTP from memory after use
+        del otp_storage[interaction.user.id]
+        await dm_channel.send("Verification Successfull!")
+
+    except Exception as e:
+        print(f"Error during verification {e}")
+        await dm_channel.send("Verification failed. Please try again")
+        
 
 # Track Lending and Borrowing
 @bot.event
