@@ -11,6 +11,12 @@ from dotenv import load_dotenv
 # Load Environment
 load_dotenv()
 
+ 
+print(f"MONGO_URI: {os.getenv('MONGO_URI')}")
+print(f"TWILIO_SID: {os.getenv('TWILIO_SID')}")
+print(f"TWILIO_PHONE: {os.getenv('TWILIO_PHONE')}")
+print(f"BOT_TOKEN: {'Loaded' if os.getenv('BOT_TOKEN') else 'Not Loaded'}")
+
 #define intents
 intents = discord.Intents.default()
 intents.messages = True #For reading messages
@@ -23,6 +29,8 @@ tree = bot.tree #Tree for the slash commands
 #setup the mongodb database
 
 MONGO_URI= os.getenv('MONGO_URI') # MongoDB url from the dotenv files
+#MONGO_URI = "mongodb+srv://enzo:enzo@sonic.3psdw.mongodb.net/?retryWrites=true&w=majority&appName=Sonic"
+
 client = MongoClient(MONGO_URI)
 db = client["discord_bot"] # database name
 users = db["kyc_users"] # Collection
@@ -113,8 +121,28 @@ async def verify(interaction: discord.Interaction):
     except Exception as e:
         print(f"Error during verification {e}")
         await dm_channel.send("Verification failed. Please try again")
-        
 
+# Whatsapp Send SMS
+@bot.tree.command(name="watsapp", description="Send a WhatsApp message")
+async def verify(interaction: discord.Interaction):
+
+    await interaction.response.send_message("Check your WhatsApp!")
+
+    try:
+        # Send WhatsApp message
+        message = twilio_client.messages.create(
+            from_="whatsapp:+14155238886",
+            to="whatsapp:+918658663855",
+           
+            body="Congratulations You just won 1000000$. Contact Aayushman to Redeem the funds!"
+        )
+
+        # Follow-up message with success confirmation
+        await interaction.followup.send(f"Message sent successfully! SID: {message.sid}")
+
+    except Exception as e:
+        # Handle errors
+        await interaction.followup.send(f"Failed to send message: {str(e)}")
 # Track Lending and Borrowing
 @bot.event
 async def on_ready():
