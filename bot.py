@@ -29,11 +29,16 @@ tree = bot.tree #Tree for the slash commands
 #setup the mongodb database
 
 MONGO_URI= os.getenv('MONGO_URL') # MongoDB urls
-
-
 client = MongoClient(MONGO_URI)
 db = client["discord_bot"] # database name
 users = db["kyc_users"] # Collection
+lending_offers = db["lending_offers"] # Collection for lending offers
+loans = db["loans"] #Collection for active loans
+
+collateral_data = {
+     "user_123": {"collateral": "ETH", "value": 1000},  
+     "user_456": {"collateral": "BTC", "value": 5000},
+}
 
 # TWILIO Credentials Setup
 TWILIO_SID = os.getenv("TWILIO_SID")
@@ -77,6 +82,7 @@ async def on_ready():
     print(f"✅ Logged in as {bot.user.name} and bot is now online!")
 
 
+
 # Verification KYC view
 class VerificationView(discord.ui.View):
     def __init__(self, user):
@@ -93,6 +99,9 @@ class VerificationView(discord.ui.View):
     async def sms_button(self, interaction: discord.Interaction, button: discord.ui.Button):
         self.choice = "sms"
         self.stop()
+
+#Dummy Collateral Data
+
 
 # Verify the user through SMS Verification Twilio
 @bot.tree.command(name="verify", description="Verify your account via phone number")
@@ -182,29 +191,96 @@ async def verify(interaction: discord.Interaction):
     except Exception as e:
         # Handle errors
         await interaction.followup.send(f"Failed to send message: {str(e)}")
-# Track Lending and Borrowing
-@bot.event
-async def on_ready():
-    await tree.sync()  # Sync commands to Discord
-    print(f"Logged in as {bot.user}")
 
-# Slash Command: Lend Money
-@bot.tree.command(name="lend", description="Lend money to another user")
-async def lend(interaction: discord.Interaction, member: discord.Member, amount: int):
-    await interaction.response.send_message(f"💰 You are lending {amount} coins to {member.mention}.")
-    print(f"Lending {amount} to {member.name}")
+@bot.tree.command(name="lend",  description="Offer to lend money")
+async def lend(interaction: discord.Interaction, amount: int, interest: float, period: int):
+    offer = {
+        "lender_id": interaction.user.id,
+        "amount": amount,
+        "interest": interest,
+        "period": period,
+        "status": "active",
+    }
+    lending_offers.insert_one(offer)
 
-# Slash Command: Borrow Money
-@bot.tree.command(name="borrow", description="Borrow Money")
-async def borrow(interaction: discord.Interaction, member: discord.Member, amount: int):
-    await interaction.response.send_message(f"🤑 You are borrowing {amount} coins from {member.mention}.")
-    print(f"Borrowing {amount} from {member.name}")
+    #Send Confirmation message
+    await interaction.response.send_message(
+         f"✅ You have offered to lend **{amount} coins** at **{interest}%** interest for **{period} days**."
+    )
 
-# Slash Command: Find Lender (AI Placeholder)
-@bot.tree.command(name="findlender", description="Find people willing to lend money")
-async def findLender(interaction: discord.Interaction):
-    await interaction.response.send_message("🤖 AI is searching for potential lenders...")
-    print("AI is searching for lenders")
+# Command: Borrow
+@bot.tree.command(name="borrow", description="Request to borrow money")
+async def borrow(interaction: discord.Interaction, amount: int, period: int):
+    user_id = str(interaction.user.id)
+    collateral = collateral_data.get(user_id, {})
+
+    if not collateral:
+        await interaction.response.response.send_message(" ❌ You need to provide collateral to borrow. Use `/add_collateral` to add collateral.")
+        return
+    
+    # Find matching lending offer
+    offer = lending_offers.find_one({"amount":{"$gte": amount}, "status": "ative"})
+
+    if not offer:
+        await interaction.response.send_message("❌ No matching lending offers found. Try again later")
+        return
+    
+    # Create a loan agreement
+    loan = {
+        "borrower_id": interaction.user.id,
+        "lender_id": offer["lender_id"],
+        "amount": amount,
+        "interest": offer["interest"],
+        "period": period,
+        "collateral": collateral,
+        "status": "active",
+    }
+    loans.insert_one(loan)
+
+    # Update the lending offer status
+    lending_offers.update_one({"_id": offer["_id"]}, {"$set": {"status": "fulfilled"}})
+
+    # Notify both parties
+    await interaction.response.send_message(
+        f"✅ Your loan request for **{amount} coins** has been approved! You have **{period} days** to repay."
+    )
+    lender = await bot.fetch_user(offer["lender_id"])
+    await lender.send(
+        f"📩 Your lending offer has been accepted! {interaction.user.name} has borrowed **{amount} coins**."
+    )
+
+
+#Comand: View Offers
+# Command: View Offers
+@bot.tree.command(name="view_offers", description="View active lending offers")
+async def view_offers(interaction: discord.Interaction):
+    # Fetch all active lending offers
+    active_offers = lending_offers.find({"status": "active"})
+
+    if not active_offers:
+        await interaction.response.send_message("❌ No active lending offers found.")
+        return
+
+    # Format the offers into a message
+    offers_message = "**Active Lending Offers:**\n"
+    for offer in active_offers:
+        offers_message += (
+            f"- **{offer['amount']} coins** at **{offer['interest']}%** interest for **{offer['period']} days**\n"
+        )
+
+    await interaction.response.send_message(offers_message)
+
+# Command: Add Collateral (Dummy Implementation)
+@bot.tree.command(name="add_collateral", description="Add collateral for borrowing")
+async def add_collateral(interaction: discord.Interaction, asset: str, value: float):
+    # Save collateral data (dummy logic for now)
+    user_id = str(interaction.user.id)
+    collateral_data[user_id] = {"collateral": asset, "value": value}
+
+    await interaction.response.send_message(
+        f"✅ Added **{asset}** worth **{value} coins** as collateral."
+    )
+
 # This will use AI to find people who are willing to lend money
 
 # Run the bot
