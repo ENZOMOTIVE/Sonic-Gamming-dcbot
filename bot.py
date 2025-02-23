@@ -120,41 +120,61 @@ def assess_user_risk_with_openai(user_id):
     """
     Use OpenAI to assess user risk based on their transaction history and behavior.
     """
+    # Fetch user data from MongoDB
     user_data = users.find_one({"user_id": user_id})
     if not user_data:
         return "User not found."
 
-    transaction_history = loans.find({"borrower_id": user_id})
-    transactions = [f"Loan of {loan['amount']} coins at {loan['interest']}% interest for {loan['period']} days" for loan in transaction_history]
+    # Fetch transaction history from MongoDB
+    transaction_history = list(loans.find({"borrower_id": user_id}))
+    if not transaction_history:
+        return "No transaction history found for this user."
+
+    # Prepare transactions as a string
+    transactions = [
+        f"Loan of {loan['amount']} coins at {loan['interest']}% interest for {loan['period']} days"
+        for loan in transaction_history
+    ]
+    transactions_str = "\n".join(transactions)
 
     # Prepare prompt for OpenAI
     prompt = (
         f"Analyze the following user transaction history and provide a risk assessment:\n"
         f"User ID: {user_id}\n"
         f"Transactions:\n"
-        f"{' '.join(transactions)}\n"
+        f"{transactions_str}\n"
         f"Based on this data, assess the user's risk level and provide a brief explanation."
     )
 
-    # Call OpenAI API
-    response = openai_client.chat.completions.create(
-        model="gpt-4-turbo",  # Use GPT-4 Turbo
-        messages=[
-            {"role": "system", "content": "You are a financial risk assessment assistant."},
-            {"role": "user", "content": prompt},
-        ],
-        max_tokens=150,
-        temperature=0.7,
-    )
+    try:
+        # Call OpenAI API
+        response = openai_client.chat.completions.create(
+            model="gpt-4-turbo",  # Use GPT-4 Turbo
+            messages=[
+                {"role": "system", "content": "You are a financial risk assessment assistant."},
+                {"role": "user", "content": prompt},
+            ],
+            max_tokens=150,
+            temperature=0.7,
+        )
 
-    # Extract and return the AI's response
-    return response.choices[0].message.content.strip()
+        # Extract and return the AI's response
+        return response.choices[0].message.content.strip()
+
+    except Exception as e:
+        print(f"Error calling OpenAI API: {e}")
+        return "Failed to assess risk due to an error."
 
 @bot.tree.command(name="assess_risk_ai", description="Assess your risk level using AI")
 async def assess_risk_ai(interaction: discord.Interaction):
+    # Defer the response to avoid timeout
+    await interaction.response.defer(ephemeral=True)
+
     user_id = str(interaction.user.id)
     risk_assessment = assess_user_risk_with_openai(user_id)
-    await interaction.response.send_message(f"**AI Risk Assessment:**\n{risk_assessment}", ephemeral=True)
+
+    # Send the response
+    await interaction.followup.send(f"**AI Risk Assessment:**\n{risk_assessment}", ephemeral=True)
 
 @bot.tree.command(name="support", description="Get AI-powered support")
 @discord.app_commands.describe(message="Enter your query (up to 2000 characters)")
