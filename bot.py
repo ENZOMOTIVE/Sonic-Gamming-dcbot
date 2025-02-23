@@ -6,14 +6,21 @@ import random
 import os
 from dotenv import load_dotenv
 from openai import OpenAI
+from web3 import Web3
 # Load Environment
 load_dotenv()
 
- 
-print(f"MONGO_URI: {os.getenv('MONGO_URI')}")
-print(f"TWILIO_SID: {os.getenv('TWILIO_SID')}")
-print(f"TWILIO_PHONE: {os.getenv('TWILIO_PHONE')}")
-print(f"BOT_TOKEN: {'Loaded' if os.getenv('BOT_TOKEN') else 'Not Loaded'}")
+SONIC_RPC_URL="https://rpc.blaze.soniclabs.com"
+
+#Connect to the SOnic blockchain
+w3 = Web3(Web3.HTTPProvider(SONIC_RPC_URL))
+
+#Test the connect
+if w3.is_connected():
+    print("✅ Connected to Sonic Blockchain!")
+else:
+    print("❌ Connection failed.")
+
 
 #define intents
 intents = discord.Intents.default()
@@ -32,11 +39,15 @@ db = client["discord_bot"] # database name
 users = db["kyc_users"] # Collection
 lending_offers = db["lending_offers"] # Collection for lending offers
 loans = db["loans"] #Collection for active loans
+users = db["users"]
 
 collateral_data = {
      "user_123": {"collateral": "ETH", "value": 1000},  
      "user_456": {"collateral": "BTC", "value": 5000},
 }
+
+
+
 
 
 #OpenAI
@@ -115,6 +126,8 @@ async def send_whatsapp_notification(phone_number, message):
     except Exception as e:
         print(f"Failed to send Whatsapp Notification: {e}")    
 
+
+
 # OpenAI Risk Assessment
 def assess_user_risk_with_openai(user_id):
     """
@@ -164,6 +177,45 @@ def assess_user_risk_with_openai(user_id):
     except Exception as e:
         print(f"Error calling OpenAI API: {e}")
         return "Failed to assess risk due to an error."
+
+
+
+@bot.tree.command(name="balance", description="Check your wallet balance")
+async def balance(interaction: discord.Interaction):
+    """
+    Checks the balance of the user’s connected wallet.
+    If the user hasn’t connected a wallet, they will be prompted to do so.
+    """
+
+    user_id = str(interaction.user.id)
+
+    # Fetch wallet address from MongoDB
+    user_data = users.find_one({"user_id": user_id})
+    
+    if not user_data:
+        await interaction.response.send_message(
+            "❌ You haven't connected a wallet yet. Use `/connect_wallet <wallet_address>` to link your wallet.",
+            ephemeral=True
+        )
+        return
+
+    public_address = user_data["public_address"]
+
+    try:
+        # Fetch balance
+        balance = w3.eth.get_balance(public_address)
+        balance_in_sonic = w3.from_wei(balance, "ether")
+
+        await interaction.response.send_message(
+            f"🔹 **Wallet:** `{public_address}`\n💰 **Balance:** `{balance_in_sonic} SonicCoins`",
+            ephemeral=True
+        )
+
+    except Exception as e:
+        await interaction.response.send_message(
+            f"⚠️ Error fetching balance: `{str(e)}`",
+            ephemeral=True
+        ) 
 
 @bot.tree.command(name="assess_risk_ai", description="Assess your risk level using AI")
 async def assess_risk_ai(interaction: discord.Interaction):
@@ -505,9 +557,3 @@ async def recommend_loan(interaction: discord.Interaction):
 
 # Run the bot
 bot.run(os.getenv("BOT_TOKEN"))   
-
-## We can use Twillio like AI can use Twillio to notify you through watsapp if the server sees any possible lender or something.
-## For KYC we can  use a model So user types in his things 
-
-# Note --  We can use AI to rate user's behaviour in the ecosystem
-# Risk Assessment: AI evaluates a borrower’s credibility based on past loans, transaction history, and community feedback.
