@@ -179,21 +179,22 @@ def assess_user_risk_with_openai(user_id):
         return "Failed to assess risk due to an error."
 
 
-
-@bot.tree.command(name="balance", description="Check your wallet balance")
+@bot.tree.command(name="walletinfo", description="Check your wallet balance and network status")
 async def balance(interaction: discord.Interaction):
     """
-    Checks the balance of the user’s connected wallet.
+    Checks the balance of the user’s connected wallet and provides network details.
     If the user hasn’t connected a wallet, they will be prompted to do so.
     """
+
+    await interaction.response.defer(thinking=True)  # Defer response to prevent timeout
 
     user_id = str(interaction.user.id)
 
     # Fetch wallet address from MongoDB
     user_data = users.find_one({"user_id": user_id})
-    
+
     if not user_data:
-        await interaction.response.send_message(
+        await interaction.followup.send(
             "❌ You haven't connected a wallet yet. Use `/connect_wallet <wallet_address>` to link your wallet.",
             ephemeral=True
         )
@@ -202,20 +203,32 @@ async def balance(interaction: discord.Interaction):
     public_address = user_data["public_address"]
 
     try:
-        # Fetch balance
+        # Fetch wallet balance
         balance = w3.eth.get_balance(public_address)
         balance_in_sonic = w3.from_wei(balance, "ether")
 
-        await interaction.response.send_message(
-            f"🔹 **Wallet:** `{public_address}`\n💰 **Balance:** `{balance_in_sonic} SonicCoins`",
+        # Fetch network status
+        network_id = w3.net.version  # Network ID
+        peer_count = w3.net.peer_count  # Number of connected peers (nodes)
+        syncing = w3.eth.syncing  # Check if the node is syncing
+
+        sync_status = "✅ Node is in sync" if not syncing else "🔄 Syncing in progress"
+
+        await interaction.followup.send(
+            f"🔹 **Wallet:** `{public_address}`\n"
+            f"💰 **Balance:** `{balance_in_sonic} SonicCoins`\n\n"
+            f"🌐 **Network ID:** `{network_id}`\n"
+            f"🔗 **Connected Peers:** `{peer_count}`\n"
+            f"📡 **Sync Status:** `{sync_status}`",
             ephemeral=True
         )
 
     except Exception as e:
-        await interaction.response.send_message(
-            f"⚠️ Error fetching balance: `{str(e)}`",
+        await interaction.followup.send(
+            f"⚠️ Error fetching balance or network status: `{str(e)}`",
             ephemeral=True
-        ) 
+        )
+
 
 @bot.tree.command(name="assess_risk_ai", description="Assess your risk level using AI")
 async def assess_risk_ai(interaction: discord.Interaction):
