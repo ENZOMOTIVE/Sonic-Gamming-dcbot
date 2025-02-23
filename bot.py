@@ -100,7 +100,17 @@ class VerificationView(discord.ui.View):
         self.choice = "sms"
         self.stop()
 
-#Dummy Collateral Data
+# Whatsapp Notification
+async def send_whatsapp_notification(phone_number, message):
+    try:
+        twilio_client.messages.create(
+            body=message,
+            from_="whatsapp:+14155238886",
+            to=f"whatsapp:{phone_number}",
+        )
+        print("Whatsapp notification sent to {phone_number}.")
+    except Exception as e:
+        print(f"Failed to send Whatsapp Notification: {e}")    
 
 
 # Verify the user through SMS Verification Twilio
@@ -208,6 +218,18 @@ async def lend(interaction: discord.Interaction, amount: int, interest: float, p
          f"✅ You have offered to lend **{amount} coins** at **{interest}%** interest for **{period} days**."
     )
 
+    #notify the user
+    phone_number="+918658663855"
+    message=(
+        f"🚀 New Lending Offer!\n"
+        f"Amount: {amount} coins\n"
+        f"Interest: {interest}%\n"
+        f"Period: {period} days\n"
+        f"Contact the lender for more details."
+    )
+    await send_whatsapp_notification(phone_number, message)
+
+
 # Command: Borrow
 @bot.tree.command(name="borrow", description="Request to borrow money")
 async def borrow(interaction: discord.Interaction, amount: int, period: int):
@@ -250,7 +272,7 @@ async def borrow(interaction: discord.Interaction, amount: int, period: int):
     )
 
 
-#Comand: View Offers
+
 # Command: View Offers
 @bot.tree.command(name="view_offers", description="View active lending offers")
 async def view_offers(interaction: discord.Interaction):
