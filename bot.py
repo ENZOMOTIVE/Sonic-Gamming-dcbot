@@ -28,8 +28,8 @@ tree = bot.tree #Tree for the slash commands
 
 #setup the mongodb database
 
-MONGO_URI= os.getenv('MONGO_URI') # MongoDB url from the dotenv files
-#MONGO_URI = "mongodb+srv://enzo:enzo@sonic.3psdw.mongodb.net/?retryWrites=true&w=majority&appName=Sonic"
+MONGO_URI= os.getenv('MONGO_URL') # MongoDB urls
+
 
 client = MongoClient(MONGO_URI)
 db = client["discord_bot"] # database name
@@ -39,7 +39,7 @@ users = db["kyc_users"] # Collection
 TWILIO_SID = os.getenv("TWILIO_SID")
 TWILIO_AUTH_TOKEN = os.getenv("TWILIO_AUTH_TOKEN")
 TWILIO_PHONE = os.getenv("TWILIO_PHONE")
-
+TWILIO_WHATSAPP=os.getenv('TWILIO_WHATSAPP')
 # Initialize Twilio Client
 twilio_client = Client(TWILIO_SID, TWILIO_AUTH_TOKEN)
 
@@ -74,30 +74,72 @@ else:
 @bot.event
 async def on_ready():
     await bot.tree.sync()  # Sync slash commands with Discord
-    print(f"✅ Logged in as {bot.user.name} and bot is now online!")   
+    print(f"✅ Logged in as {bot.user.name} and bot is now online!")
+
+
+# Verification KYC view
+class VerificationView(discord.ui.View):
+    def __init__(self, user):
+        super().__init__(timeout=50) # 60 second timeout
+        self.user = user
+        self.choice = None
+
+    @discord.ui.button(label="WhatsApp", style=discord.ButtonStyle.green)
+    async def whatsapp_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        self.choice = "whatsapp"
+        self.stop() #Ends the interaction allowing to proceed in the main function
+
+    @discord.ui.button(label="SMS", style=discord.ButtonStyle.blurple)
+    async def sms_button(self, interaction: discord.Interaction, button: discord.ui.Button):
+        self.choice = "sms"
+        self.stop()
 
 # Verify the user through SMS Verification Twilio
 @bot.tree.command(name="verify", description="Verify your account via phone number")
 async def verify(interaction: discord.Interaction):
-    await interaction.response.send_message("Check your DMs for Verification", ephemeral=True)
+    await interaction.response.defer()
+
+    await interaction.followup.send("Check your DMs for Verification", view=VerificationView(interaction.user), ephemeral=True)
+
+    view = VerificationView(interaction.user)
+   
+
+    await interaction.followup.send("Please choose Whatsapp or SMS:", view=view, ephemeral=True)
+    
+    #Wait for the user to select an option
+    await view.wait()
+
+    if view.choice is None:
+       
+        await interaction.followup.send("Verification timed out. Please try again", ephemeral=True)
+
+    #Send DM to user
+    dm_channel = await interaction.user.create_dm()
+    await dm_channel.send("Please provide your phone number for verification")
+
+    def check_phone(msg):
+        return msg.author == interaction.user and isinstance(msg.channel, discord.DMChannel)
 
     try:
-        #Send DM to user
-        dm_channel = await interaction.user.create_dm()
-        await dm_channel.send("Please provide your phone number for verification")
-
-        def check_phone(msg):
-            return msg.author == interaction.user and isinstance(msg.channel, discord.DMChannel)
-
         phone_msg = await bot.wait_for("message", check=check_phone, timeout=60)
         phone_number = phone_msg.content.strip()
 
-        #Generate OTP and store it temporarily
+         #Generate OTP and store it temporarily
         otp = str(random.randint(100000,999999))
         otp_storage[interaction.user.id] = otp #Store OTP with user ID
 
-        #Send OTP via Twilio
-        twilio_client.messages.create(
+        #Send OTP based on User's choice
+        if view.choice == "whatsapp":
+            twilio_client.messages.create(
+                body=f"Your OTP for Verification is : {otp}",
+                from_="whatsapp:+14155238886",
+                to=f"whatsapp:{phone_number}"
+            )
+            await dm_channel.send("OTP send via WhatsApp")
+        else:
+
+            #Send OTP via Twilio
+            twilio_client.messages.create(
             body=f"Your OTP for verification is: {otp}",
             from_=TWILIO_PHONE,
             to=phone_number
@@ -122,9 +164,6 @@ async def verify(interaction: discord.Interaction):
         print(f"Error during verification {e}")
         await dm_channel.send("Verification failed. Please try again")
 
-# Whatsapp Send SMS
-@bot.tree.command(name="watsapp", description="Send a WhatsApp message")
-async def verify(interaction: discord.Interaction):
 
     await interaction.response.send_message("Check your WhatsApp!")
 
@@ -173,3 +212,6 @@ bot.run(os.getenv("BOT_TOKEN"))
 
 ## We can use Twillio like AI can use Twillio to notify you through watsapp if the server sees any possible lender or something.
 ## For KYC we can  use a model So user types in his things 
+
+# Note --  We can use AI to rate user's behaviour in the ecosystem
+# Risk Assessment: AI evaluates a borrower’s credibility based on past loans, transaction history, and community feedback.
