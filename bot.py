@@ -434,6 +434,55 @@ async def add_collateral(interaction: discord.Interaction, asset: str, value: fl
 
 # This will use AI to find people who are willing to lend money
 
+def recommend_loan_with_openai(user_id):
+    """
+    Use OpenAI to recommend loan offers based on user preferences and risk profile.
+    """
+    # Fetch user data from MongoDB
+    user_data = users.find_one({"user_id": user_id})
+    if not user_data:
+        return "User not found."
+
+    # Fetch active lending offers
+    active_offers = lending_offers.find({"status": "active"})
+    offers = [f"Offer {i+1}: {offer['amount']} coins at {offer['interest']}% interest for {offer['period']} days" for i, offer in enumerate(active_offers)]
+
+    # Prepare prompt for OpenAI
+    prompt = (
+        f"Based on the following active lending offers, recommend the best loan for user {user_id}:\n"
+        f"Offers:\n"
+        f"{' '.join(offers)}\n"
+        f"Provide a brief explanation for your recommendation."
+    )
+
+    # Call OpenAI API
+    response = openai_client.chat.completions.create(
+        model="gpt-4-turbo",  # Use GPT-4 Turbo
+        messages=[
+            {"role": "system", "content": "You are a financial advisor for a crypto lending platform."},
+            {"role": "user", "content": prompt},
+        ],
+        max_tokens=150,
+        temperature=0.7,
+    )
+
+    # Extract and return the AI's response
+    return response.choices[0].message.content.strip()
+
+@bot.tree.command(name="recommend_loan", description="Get AI-powered loan recommendations")
+async def recommend_loan(interaction: discord.Interaction):
+    user_id = str(interaction.user.id)
+
+    # **Defer response immediately to prevent expiration**
+    await interaction.response.defer(ephemeral=True)  
+
+    # Call OpenAI and generate a recommendation
+    loan_recommendation = recommend_loan_with_openai(user_id)
+
+    # **Use followup.send() instead of response.send_message()**
+    await interaction.followup.send(f"**AI Loan Recommendation:**\n{loan_recommendation}", ephemeral=True)
+
+
 # Run the bot
 bot.run(os.getenv("BOT_TOKEN"))   
 
