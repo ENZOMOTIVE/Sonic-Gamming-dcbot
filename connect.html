@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Connect to Sonic Blaze Testnet</title>
+    <script>
+        async function connectMetaMask() {
+            if (window.ethereum) {
+                try {
+                    await window.ethereum.request({ method: "eth_requestAccounts" });
+                    const chainId = "57054"; 
+                    await window.ethereum.request({
+                        method: "wallet_addEthereumChain",
+                        params: [{
+                            chainId: chainId,
+                            chainName: "Sonic Blaze Testnet",
+                            rpcUrls: ["https://rpc.blaze.soniclabs.com"],
+                            nativeCurrency: {
+                                name: "Sonic Blaze",
+                                symbol: "S",
+                                decimals: 18
+                            },
+                            blockExplorerUrls: ["https://testnet.sonicscan.org"]
+                        }]
+                    });
+                    alert("Connected to Sonic Blaze Testnet!");
+                } catch (error) {
+                    console.error("Error connecting:", error);
+                    alert("Failed to connect. Check console for details.");
+                }
+            } else {
+                alert("MetaMask not detected. Please install MetaMask.");
+            }
+        }
+    </script>
+</head>
+<body onload="connectMetaMask()">
+    <h2>Connecting to Sonic Blaze Testnet...</h2>
+</body>
+</html>

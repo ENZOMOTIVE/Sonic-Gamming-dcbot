@@ -2,12 +2,10 @@ import discord
 from discord.ext import commands
 from pymongo import MongoClient
 from twilio.rest import Client
-
 import random
-
 import os
 from dotenv import load_dotenv
-
+from openai import OpenAI
 # Load Environment
 load_dotenv()
 
@@ -39,6 +37,11 @@ collateral_data = {
      "user_123": {"collateral": "ETH", "value": 1000},  
      "user_456": {"collateral": "BTC", "value": 5000},
 }
+
+
+#OpenAI
+OPENAI = os.getenv("OPENAI_API_KEY")
+openai_client = OpenAI(api_key=OPENAI)
 
 # TWILIO Credentials Setup
 TWILIO_SID = os.getenv("TWILIO_SID")
@@ -111,6 +114,99 @@ async def send_whatsapp_notification(phone_number, message):
         print("Whatsapp notification sent to {phone_number}.")
     except Exception as e:
         print(f"Failed to send Whatsapp Notification: {e}")    
+
+# OpenAI Risk Assessment
+def assess_user_risk_with_openai(user_id):
+    """
+    Use OpenAI to assess user risk based on their transaction history and behavior.
+    """
+    user_data = users.find_one({"user_id": user_id})
+    if not user_data:
+        return "User not found."
+
+    transaction_history = loans.find({"borrower_id": user_id})
+    transactions = [f"Loan of {loan['amount']} coins at {loan['interest']}% interest for {loan['period']} days" for loan in transaction_history]
+
+    # Prepare prompt for OpenAI
+    prompt = (
+        f"Analyze the following user transaction history and provide a risk assessment:\n"
+        f"User ID: {user_id}\n"
+        f"Transactions:\n"
+        f"{' '.join(transactions)}\n"
+        f"Based on this data, assess the user's risk level and provide a brief explanation."
+    )
+
+    # Call OpenAI API
+    response = openai_client.chat.completions.create(
+        model="gpt-4-turbo",  # Use GPT-4 Turbo
+        messages=[
+            {"role": "system", "content": "You are a financial risk assessment assistant."},
+            {"role": "user", "content": prompt},
+        ],
+        max_tokens=150,
+        temperature=0.7,
+    )
+
+    # Extract and return the AI's response
+    return response.choices[0].message.content.strip()
+
+@bot.tree.command(name="assess_risk_ai", description="Assess your risk level using AI")
+async def assess_risk_ai(interaction: discord.Interaction):
+    user_id = str(interaction.user.id)
+    risk_assessment = assess_user_risk_with_openai(user_id)
+    await interaction.response.send_message(f"**AI Risk Assessment:**\n{risk_assessment}", ephemeral=True)
+
+@bot.tree.command(name="support", description="Get AI-powered support")
+@discord.app_commands.describe(message="Enter your query (up to 2000 characters)")
+async def support(interaction: discord.Interaction, message: str):
+    """
+    Provide AI-powered support to users.
+    """
+
+    # Check message length
+    if len(message) > 2000:
+        await interaction.response.send_message("⚠️ Your message is too long! Please keep it under 2000 characters.", ephemeral=True)
+        return
+
+    # Defer response to prevent expiration
+    await interaction.response.defer(ephemeral=True)
+
+    try:
+        # Call OpenAI API
+        response = openai_client.chat.completions.create(
+            model="gpt-4-turbo",  # Use GPT-4 Turbo
+            messages=[
+                {"role": "system", "content": "You are a helpful support assistant for a crypto lending bot."},
+                {"role": "user", "content": message},
+            ],
+            max_tokens=300,  # Increase response size
+            temperature=0.7,
+        )
+
+        # Extract AI response
+        ai_response = response.choices[0].message.content.strip()
+
+        # Use follow-up to send the response
+        await interaction.followup.send(f"**AI Support:**\n{ai_response}")
+
+    except Exception as e:
+        await interaction.followup.send(f"❌ Error: {str(e)}")  # Handle errors properly
+
+# Connect Wallet
+@bot.tree.command(name="connect_wallet", description="Connect your Metamask wallet")
+async def connect_wallet(interaction: discord.Interaction, public_address: str):
+    user_id = str(interaction.user.id)
+    
+    # Check if the user already has a connected wallet
+    if users.find_one({"user_id": user_id}):
+        await interaction.response.send_message("❌ You already have a wallet connected.", ephemeral=True)
+        return
+    
+    # Store the public address in MongoDB
+    users.insert_one({"user_id": user_id, "public_address": public_address})
+    
+    await interaction.response.send_message(f"✅ Wallet connected successfully! Public Address: {public_address}", ephemeral=True)
+
 
 
 # Verify the user through SMS Verification Twilio
@@ -201,6 +297,39 @@ async def verify(interaction: discord.Interaction):
     except Exception as e:
         # Handle errors
         await interaction.followup.send(f"Failed to send message: {str(e)}")
+
+
+    user_id = str(interaction.user.id)
+    
+    # Check if the user already has a connected wallet
+    if users.find_one({"user_id": user_id}):
+        await interaction.response.send_message("❌ You already have a wallet connected.", ephemeral=True)
+        return
+    
+    # Store the public address in MongoDB
+    users.insert_one({"user_id": user_id, "public_address": public_address})
+    
+    await interaction.response.send_message(f"✅ Wallet connected successfully! Public Address: {public_address}", ephemeral=True)
+
+    #Sonic testnet connect
+    @bot.tree.command(name="connect_testnet", description="Connect to the Sonic Blaze testnet")
+    async def connect_testnet(interaction: discord.Interaction):
+        rpc_url = "https://rpc.blaze.soniclabs.com"
+        chain_id = 57054
+        currency_symbol = "S"
+        explorer_url = "https://testnet.sonicscan.org"
+    
+    # Provide the user with the necessary details to connect to the testnet
+    message = (
+        f"**Sonic Blaze Testnet Details:**\n"
+        f"- RPC URL: `{rpc_url}`\n"
+        f"- Chain ID: `{chain_id}`\n"
+        f"- Currency Symbol: `{currency_symbol}`\n"
+        f"- Explorer URL: `{explorer_url}`\n"
+        f"\nUse these details to connect your wallet to the Sonic Blaze testnet."
+    )
+    
+    await interaction.response.send_message(message, ephemeral=True)
 
 @bot.tree.command(name="lend",  description="Offer to lend money")
 async def lend(interaction: discord.Interaction, amount: int, interest: float, period: int):
